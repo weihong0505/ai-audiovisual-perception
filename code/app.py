@@ -38,8 +38,11 @@ def run_record(cfg, root, stop_event=None):
                                         cfg["recording"]["keyframe_sec"]))
 
     def _record_all():
-        for r in recorders:
-            r.run()
+        threads = [threading.Thread(target=r.run, daemon=True) for r in recorders]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         stop.set()
 
     threading.Thread(target=_record_all, daemon=True).start()
