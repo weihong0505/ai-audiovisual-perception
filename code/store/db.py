@@ -1,5 +1,6 @@
 """SQLite 存储层：建表、写入、FTS5(trigram) 手动同步。"""
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA = """
@@ -55,62 +56,72 @@ def init_db(db_path):
     conn.commit()
     conn.close()
 
-def insert_camera(db_path, name, source, cam_id=None):
+@contextmanager
+def _write(db_path):
+    """写入即关：无论成功/异常都释放连接（异常先回滚再上抛），杜绝写失败后连接泄漏持锁。"""
     conn = connect(db_path)
-    if cam_id is not None:
-        conn.execute("INSERT OR IGNORE INTO cameras(id, name, source) VALUES (?,?,?)",
-                     (cam_id, name, str(source)))
-        rid = cam_id
-    else:
-        cur = conn.execute("INSERT INTO cameras(name, source) VALUES (?,?)", (name, str(source)))
-        rid = cur.lastrowid
-    conn.commit(); conn.close()
+    try:
+        yield conn
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def insert_camera(db_path, name, source, cam_id=None):
+    with _write(db_path) as conn:
+        if cam_id is not None:
+            conn.execute("INSERT OR IGNORE INTO cameras(id, name, source) VALUES (?,?,?)",
+                         (cam_id, name, str(source)))
+            rid = cam_id
+        else:
+            cur = conn.execute("INSERT INTO cameras(name, source) VALUES (?,?)", (name, str(source)))
+            rid = cur.lastrowid
     return rid
 
 def insert_video_segment(db_path, camera_id, start_ms, end_ms, file_path):
-    conn = connect(db_path)
-    cur = conn.execute(
-        "INSERT INTO video_segments(camera_id, start_ms, end_ms, file_path) VALUES (?,?,?,?)",
-        (camera_id, start_ms, end_ms, file_path))
-    conn.commit(); rid = cur.lastrowid; conn.close()
+    with _write(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO video_segments(camera_id, start_ms, end_ms, file_path) VALUES (?,?,?,?)",
+            (camera_id, start_ms, end_ms, file_path))
+        rid = cur.lastrowid
     return rid
 
 def insert_transcription(db_path, camera_id, start_ms, end_ms, text, device="mic", model="faster-whisper"):
     text = (text or "").strip()
     if not text:
         return None
-    conn = connect(db_path)
-    cur = conn.execute(
-        "INSERT INTO transcriptions(camera_id, start_ms, end_ms, text, device, model) VALUES (?,?,?,?,?,?)",
-        (camera_id, start_ms, end_ms, text, device, model))
-    rid = cur.lastrowid
-    conn.execute("INSERT INTO transcriptions_fts(rowid, text) VALUES (?, ?)", (rid, text))
-    conn.commit(); conn.close()
+    with _write(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO transcriptions(camera_id, start_ms, end_ms, text, device, model) VALUES (?,?,?,?,?,?)",
+            (camera_id, start_ms, end_ms, text, device, model))
+        rid = cur.lastrowid
+        conn.execute("INSERT INTO transcriptions_fts(rowid, text) VALUES (?, ?)", (rid, text))
     return rid
 
 def insert_frame(db_path, camera_id, video_segment_id, captured_ms, offset_ms, file_path):
-    conn = connect(db_path)
-    cur = conn.execute(
-        "INSERT INTO frames(camera_id, video_segment_id, captured_ms, offset_ms, file_path) VALUES (?,?,?,?,?)",
-        (camera_id, video_segment_id, captured_ms, offset_ms, file_path))
-    conn.commit(); rid = cur.lastrowid; conn.close()
+    with _write(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO frames(camera_id, video_segment_id, captured_ms, offset_ms, file_path) VALUES (?,?,?,?,?)",
+            (camera_id, video_segment_id, captured_ms, offset_ms, file_path))
+        rid = cur.lastrowid
     return rid
 
 def insert_clip_analysis(db_path, camera_id, start_ms, end_ms, summary, model):
     summary = (summary or "").strip()
     if not summary:
         return None
-    conn = connect(db_path)
-    cur = conn.execute(
-        "INSERT INTO clip_analyses(camera_id, start_ms, end_ms, summary, model) VALUES (?,?,?,?,?)",
-        (camera_id, start_ms, end_ms, summary, model))
-    rid = cur.lastrowid
-    conn.execute("INSERT INTO clip_analyses_fts(rowid, summary) VALUES (?, ?)", (rid, summary))
-    conn.commit(); conn.close()
+    with _write(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO clip_analyses(camera_id, start_ms, end_ms, summary, model) VALUES (?,?,?,?,?)",
+            (camera_id, start_ms, end_ms, summary, model))
+        rid = cur.lastrowid
+        conn.execute("INSERT INTO clip_analyses_fts(rowid, summary) VALUES (?, ?)", (rid, summary))
     return rid
 
 def insert_event(db_path, ts_ms, kind, payload):
-    conn = connect(db_path)
-    cur = conn.execute("INSERT INTO events(ts_ms, kind, payload) VALUES (?,?,?)", (ts_ms, kind, payload))
-    conn.commit(); rid = cur.lastrowid; conn.close()
+    with _write(db_path) as conn:
+        cur = conn.execute("INSERT INTO events(ts_ms, kind, payload) VALUES (?,?,?)", (ts_ms, kind, payload))
+        rid = cur.lastrowid
     return rid
