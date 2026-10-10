@@ -117,9 +117,7 @@ CREATE TABLE transcriptions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX idx_trans_start ON transcriptions(start_ms);
-CREATE VIRTUAL TABLE transcriptions_fts USING fts5(
-  text, content='transcriptions', content_rowid='id'
-);
+CREATE VIRTUAL TABLE transcriptions_fts USING fts5(text, tokenize='trigram');
 
 -- 关键帧（从视频段抽取的索引帧/缩略图）
 CREATE TABLE frames (
@@ -144,9 +142,7 @@ CREATE TABLE clip_analyses (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX idx_clip_cam_ts ON clip_analyses(camera_id, start_ms);
-CREATE VIRTUAL TABLE clip_analyses_fts USING fts5(
-  summary, content='clip_analyses', content_rowid='id'
-);
+CREATE VIRTUAL TABLE clip_analyses_fts USING fts5(summary, tokenize='trigram');
 
 -- 事件（系统状态 / 汇总 / 问答记录，可选扩展）
 CREATE TABLE events (
@@ -157,17 +153,7 @@ CREATE TABLE events (
 );
 ```
 
-触发器（写入主表时自动同步 FTS，保持索引一致）：
-
-```sql
-CREATE TRIGGER tr_trans_ai AFTER INSERT ON transcriptions BEGIN
-  INSERT INTO transcriptions_fts(rowid, text) VALUES (new.id, new.text);
-END;
-CREATE TRIGGER tr_clip_ai AFTER INSERT ON clip_analyses BEGIN
-  INSERT INTO clip_analyses_fts(rowid, summary) VALUES (new.id, new.summary);
-END;
--- 删除/更新触发器在实现阶段补齐（MVP 只增不删，先留 INSERT 即可）。
-```
+> 注：FTS 索引在 `insert_*` 内手动同步（trigram 支持中文检索）。
 
 ## 5. 实时性与性能（8GB 显存调度）
 
