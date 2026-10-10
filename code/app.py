@@ -10,6 +10,10 @@ from store.db import init_db, insert_camera, insert_transcription, insert_event
 from capture.recorder import CameraRecorder, CameraVideoSource, FileVideoSource
 from capture.audio import FileAudioSource, MicAudioSource
 from perception.asr import Transcriber
+import datetime
+from retrieve.search import search_transcripts, search_clip_analyses, frames_in_range
+from qa.ask import build_context, ask_ollama
+from perception.clip_analyzer import analyze_clip
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,18 +83,60 @@ def run_record(cfg, root, stop_event=None):
         stop.set()
     insert_event(db, int(time.time() * 1000), "system", "record stopped")
 
+def answer_question(cfg, root, question, camera_id=None):
+    db = _resolve(cfg, root, "db", "data/audiovisual.sqlite")
+    host = cfg["ollama"]["host"]
+    now = int(time.time() * 1000)
+    window_ms = 10 * 60 * 1000  # 最近 10 分钟
+    trans = search_transcripts(db, "", start_ms=now - window_ms, end_ms=now,
+                               camera_id=camera_id, limit=30, desc=True)
+    clips = search_clip_analyses(db, "", start_ms=now - window_ms, end_ms=now,
+                                 camera_id=camera_id, limit=10, desc=True)
+    ctx = build_context(trans, clips)
+    return ask_ollama(host, cfg["ollama"]["llm"], question, ctx)
+
+def analyze_range(cfg, root, camera_id, start_ms, end_ms):
+    db = _resolve(cfg, root, "db", "data/audiovisual.sqlite")
+    media = _resolve(cfg, root, "media_dir", "data/media")
+    return analyze_clip(db, media, camera_id, start_ms, end_ms,
+                        cfg["ollama"]["host"], cfg["ollama"]["vlm"])
+
+def _parse_range(s):
+    # CLI 输入便利：HH:MM:SS-HH:MM:SS 按「今天本地墙钟」解析，内部立即转 UTC ms 存储
+    a, b = s.split("-")
+    def to_ms(hms):
+        h, m, sec = (int(x) for x in hms.split(":"))
+        today = datetime.date.today()
+        dt = datetime.datetime(today.year, today.month, today.day, h, m, sec)
+        return int(dt.timestamp() * 1000)
+    return to_ms(a), to_ms(b)
+
 def main(argv=None):
     argv = argv or sys.argv[1:]
     if not argv:
         print("usage: python app.py record|ask|repl|analyze"); return
-    cfg_path = PROJECT_ROOT / "config.yaml"
-    if not cfg_path.exists():
-        cfg_path = PROJECT_ROOT / "config.yaml.example"
-    cfg = load_config(str(cfg_path))
-    if argv[0] == "record":
+    cfg = load_config(str(PROJECT_ROOT / "config.yaml"))
+    cmd = argv[0]
+    if cmd == "record":
         run_record(cfg, PROJECT_ROOT)
+    elif cmd == "ask":
+        q = argv[1] if len(argv) > 1 else input("问题: ")
+        cam = int(argv[2]) if len(argv) > 2 else None
+        print(answer_question(cfg, PROJECT_ROOT, q, camera_id=cam))
+    elif cmd == "analyze":
+        if len(argv) < 3:
+            print("usage: python app.py analyze <cam_id> <HH:MM:SS-HH:MM:SS>"); return
+        start_ms, end_ms = _parse_range(argv[2])
+        print(analyze_range(cfg, PROJECT_ROOT, int(argv[1]), start_ms, end_ms))
+    elif cmd == "repl":
+        while True:
+            q = input("> ")
+            if q.strip() in ("exit", "quit", "q"):
+                break
+            if q.strip():
+                print(answer_question(cfg, PROJECT_ROOT, q))
     else:
-        print(f"'{argv[0]}' 将在 Task 10 实现")
+        print(f"未知命令: {cmd}")
 
 if __name__ == "__main__":
     main()
