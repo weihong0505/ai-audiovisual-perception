@@ -83,7 +83,7 @@
 
 ## 4. 数据模型（SQLite 单库）
 
-> **时间标准（全项目唯一约定）**：所有时间戳用 **UTC epoch 毫秒 INTEGER** 存储，另存 ISO8601 文本便于人读。跨表、跨模块、跨函数一律遵守，不做本地时区换算。
+> **时间标准（全项目唯一约定）**：所有时间戳用 **UTC epoch 毫秒 INTEGER** 存储，另存 ISO8601 文本便于人读。跨表、跨模块、跨函数一律遵守，**存储/比较不做本地时区换算**；仅在**人机边界**做本地墙钟 ↔ UTC epoch 毫秒换算——CLI 解析（`app._parse_range`：本地 `HH:MM:SS` → UTC ms）与问答上下文显示（`qa.ask._fmt_ms`：UTC ms → 本地 `HH:MM:SS`）。
 
 ```sql
 -- 摄像头（多路）
@@ -153,7 +153,9 @@ CREATE TABLE events (
 );
 ```
 
-> 注：FTS 索引在 `insert_*` 内手动同步（trigram 支持中文检索）。
+> 注：FTS 索引在 `insert_*` 内手动同步（trigram 支持中文检索；检索层 <3 字查询走 `LIKE` 回退）。
+> 注：`cameras.id` 直接取配置里的 `cameras[].id`（`insert_camera(..., cam_id=...)`），多路录制/检索按此 id 路由一致。
+> 注：关键帧 `frames` 在视频段关闭、拿到真实 `video_segment_id` 后再落库（段内先内存缓冲，`_close_segment` 时 flush），保证 FK 完整。
 
 ## 5. 实时性与性能（8GB 显存调度）
 
@@ -178,7 +180,7 @@ CREATE TABLE events (
 
 ## 6. 配置与接口
 
-`config.yaml`（示例，所有参数可配置、不硬编码）：
+`config.yaml`（示例，所有参数可配置、不硬编码）；仓库提交 `config.yaml.example`，运行时 `main()` 在 `config.yaml` 缺失时自动回退到 `.example`（全新 checkout 可用）：
 
 ```yaml
 cameras:                      # 多路，每路一个 camera_id
