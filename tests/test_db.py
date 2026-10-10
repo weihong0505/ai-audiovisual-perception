@@ -16,7 +16,7 @@ def test_insert_and_fts_search_chinese(tmp_path):
     conn = connect(db)
     rows = conn.execute(
         "SELECT rowid FROM transcriptions_fts WHERE transcriptions_fts MATCH ?",
-        ('"货车"',),
+        ('"辆货车"',),
     ).fetchall()
     assert len(rows) == 1
     conn.close()

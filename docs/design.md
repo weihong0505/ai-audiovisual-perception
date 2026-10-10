@@ -227,7 +227,7 @@ python app.py summary 10:00-10:30 # （可选）时间范围小结
 
 ## 8. 测试策略
 
-- **单测**：`store/db.py`（schema/触发器/FTS）、时间解析、多摄像头路由。
+- **单测**：`store/db.py`（schema/FTS5 trigram 手动同步）、时间解析、多摄像头路由。
 - **集成**：`FileVideoSource` + `FileAudioSource` 喂带音频的 mp4 夹具，跑「文件→录制分段→转写→落库→检索→问答」全链路；问答用真实 Ollama 或 `MockLLM` 验证上下文拼装。
 - **时序理解验收**：对一段含明显动作的夹具视频，验证 `clip_analyses.summary` 能描述动作序列（AC6）。
 - **不丢帧验收**：录制 1 分钟，校验 `video_segments` 覆盖时长 ≈ 60s（AC5）。
