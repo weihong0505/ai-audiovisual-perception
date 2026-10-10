@@ -1,11 +1,12 @@
 from pathlib import Path
 from capture.recorder import FileVideoSource, CameraRecorder
-from store.db import init_db, connect
+from store.db import insert_camera, init_db, connect
 
 FIXTURE = Path(__file__).parent / "fixtures" / "clip.mp4"
 
 def test_recorder_writes_segment_and_frames(tmp_path):
     db = str(tmp_path / "r.sqlite"); init_db(db)
+    insert_camera(db, "c1", "0", cam_id=1)
     media = tmp_path / "media"; media.mkdir()
     src = FileVideoSource(str(FIXTURE))
     rec = CameraRecorder(camera_id=1, source=src, db_path=db,
