@@ -1,19 +1,21 @@
+import datetime
 from unittest import mock
 import pytest
 import requests
 from qa.ask import build_context, _fmt_ms, ask_ollama
 
 def test_build_context_formats_records():
-    trans = [{"start_ms": 1000, "text": "有人来了"}, {"start_ms": 5000, "text": "门开了"}]
-    clips = [{"start_ms": 0, "end_ms": 6000, "summary": "一个人从左边走到门口"}]
+    t0 = int(datetime.datetime(2026, 10, 11, 10, 0, 0).timestamp() * 1000)
+    trans = [{"start_ms": t0, "text": "有人来了"}, {"start_ms": t0 + 4000, "text": "门开了"}]
+    clips = [{"start_ms": t0, "end_ms": t0 + 6000, "summary": "一个人从左边走到门口"}]
     ctx = build_context(trans, clips)
     assert "有人来了" in ctx
     assert "一个人从左边走到门口" in ctx
-    assert "00:00:01" in ctx  # 时间格式化
+    assert "10:00:00" in ctx  # 绝对 epoch ms → 本地墙钟
 
-def test_fmt_ms_no_day_rollover():
-    assert _fmt_ms(86400000) == "24:00:00"
-    assert _fmt_ms(25 * 3600000 + 5 * 60000) == "25:05:00"
+def test_fmt_ms_epoch_to_wallclock():
+    ms = int(datetime.datetime(2026, 10, 11, 14, 5, 0).timestamp() * 1000)
+    assert _fmt_ms(ms) == "14:05:00"
 
 def test_ask_ollama_raises_on_connection_error():
     with mock.patch("qa.ask.requests.post",

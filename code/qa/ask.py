@@ -1,9 +1,9 @@
 """问答：组装上下文 + 调 Ollama。"""
+import datetime
 import requests
 
 def _fmt_ms(ms):
-    s = ms // 1000
-    return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
+    return datetime.datetime.fromtimestamp(ms / 1000).strftime("%H:%M:%S")
 
 def build_context(transcriptions, clip_summaries=None):
     parts = []

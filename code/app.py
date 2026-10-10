@@ -85,6 +85,7 @@ def run_record(cfg, root, stop_event=None):
 
 def answer_question(cfg, root, question, camera_id=None):
     db = _resolve(cfg, root, "db", "data/audiovisual.sqlite")
+    init_db(db)
     host = cfg["ollama"]["host"]
     now = int(time.time() * 1000)
     window_ms = 10 * 60 * 1000  # 最近 10 分钟
@@ -97,6 +98,7 @@ def answer_question(cfg, root, question, camera_id=None):
 
 def analyze_range(cfg, root, camera_id, start_ms, end_ms):
     db = _resolve(cfg, root, "db", "data/audiovisual.sqlite")
+    init_db(db)
     media = _resolve(cfg, root, "media_dir", "data/media")
     return analyze_clip(db, media, camera_id, start_ms, end_ms,
                         cfg["ollama"]["host"], cfg["ollama"]["vlm"])
