@@ -1,6 +1,7 @@
 import threading
 from pathlib import Path
-from app import run_record
+import pytest
+from app import run_record, _validate_record_cfg
 from store.db import connect, init_db
 
 FIXTURE = Path(__file__).parent / "fixtures" / "clip.mp4"
@@ -27,3 +28,15 @@ def test_run_record_writes_video_and_audio(tmp_path):
     segs = conn.execute("SELECT * FROM video_segments").fetchall()
     conn.close()
     assert len(segs) >= 1  # 至少录出一个视频段
+
+def test_validate_record_cfg_rejects_zero_window_sec(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg["audio"]["window_sec"] = 0
+    with pytest.raises(ValueError):
+        _validate_record_cfg(cfg)
+
+def test_validate_record_cfg_rejects_zero_sample_rate(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg["audio"]["sample_rate"] = 0
+    with pytest.raises(ValueError):
+        _validate_record_cfg(cfg)

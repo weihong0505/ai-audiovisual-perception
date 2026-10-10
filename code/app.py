@@ -21,7 +21,18 @@ def _resolve(cfg, root, key, default):
     p = Path(cfg["storage"].get(key, default))
     return str(p if p.is_absolute() else root / p)
 
+def _validate_record_cfg(cfg):
+    """录制启动前校验：window_sec/sample_rate 必须 >0，否则 _audio_loop 死循环。"""
+    audio = cfg.get("audio") or {}
+    sample_rate = audio.get("sample_rate")
+    window_sec = audio.get("window_sec")
+    if not isinstance(sample_rate, (int, float)) or sample_rate <= 0:
+        raise ValueError("audio.sample_rate 必须 > 0（当前 %r）" % (sample_rate,))
+    if not isinstance(window_sec, (int, float)) or window_sec <= 0:
+        raise ValueError("audio.window_sec 必须 > 0（当前 %r）" % (window_sec,))
+
 def run_record(cfg, root, stop_event=None):
+    _validate_record_cfg(cfg)
     db = _resolve(cfg, root, "db", "data/audiovisual.sqlite")
     media = _resolve(cfg, root, "media_dir", "data/media")
     init_db(db)
