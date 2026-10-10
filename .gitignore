@@ -1,0 +1,26 @@
+# 数据与产出
+data/
+output/
+
+# 备份
+backup/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+
+# 数据库与媒体
+*.sqlite
+*.db
+*.sqlite3
+
+# 测试大文件（保留目录占位）
+tests/fixtures/*
+!tests/fixtures/.gitkeep
+
+# 日志与临时
+*.log
+*.tmp
