@@ -115,7 +115,10 @@ def main(argv=None):
     argv = argv or sys.argv[1:]
     if not argv:
         print("usage: python app.py record|ask|repl|analyze"); return
-    cfg = load_config(str(PROJECT_ROOT / "config.yaml"))
+    cfg_path = PROJECT_ROOT / "config.yaml"
+    if not cfg_path.exists():
+        cfg_path = PROJECT_ROOT / "config.yaml.example"
+    cfg = load_config(str(cfg_path))
     cmd = argv[0]
     if cmd == "record":
         run_record(cfg, PROJECT_ROOT)
