@@ -25,3 +25,4 @@ tests/fixtures/*
 *.log
 *.tmp
 config.yaml
+.pytest_cache/
