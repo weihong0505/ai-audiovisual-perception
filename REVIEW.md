@@ -31,7 +31,7 @@
 1. 摄像头 Ctrl+C 优雅停机未接线（Ruling#4，AC5 用文件源 EOF 自动停验）。
 2. `analyze_clip` VLM 路径无自动化测试（Ruling#5，AC6 由手工 Step5 验）。
 3. `search_clip_analyses` / `frames_in_range` 无单测（同构于已测 `search_transcripts`）。
-4. FTS5 `MATCH` 查询含双引号会语法错误（无转义；CLI 恒传 `q=""` 故不触发）。
+4. ~~FTS5 `MATCH` 查询含双引号会语法错误~~ **已修（F1）**：含 `"` 等 FTS5 特殊字符/大写布尔算子的 q 路由 LIKE 回退，见下方「对抗审查修复」。
 5. `_fmt_ms` 负值未处理（现有数据全非负，不可达）。
 6. `ask_ollama`/`analyze_clip` 裸 `r.json()["message"]["content"]`（响应缺字段 → KeyError）。
 7. `_to_b64` 不查 `cv2.imencode` 返回码。
@@ -41,6 +41,16 @@
 11. `FileAudioSource` 丢 ffmpeg stderr / 不查返回码。
 12. `last_kf` 段回卷未重置（仅关键帧索引偏移，无正确性影响）。
 13. 测试夹具 `clip.mp4`/`tone.wav` gitignored（ffmpeg 再生成）。
+
+## 对抗审查修复（2026-10-11）
+
+独立对抗审查（`.superpowers/sdd/2026-10-11-m1-m4/adversarial-review.md`）实测出 3 条 load-bearing 缺陷，已按 TDD（先红后绿）修复，全量 22 passed：
+
+- **F1**（Important）FTS5 双引号注入：`q` 直接拼进 MATCH 短语，`q='"""'` → `OperationalError: unterminated string`，`q='xyz" OR "辆货车'` 逃逸引号注入 FTS 布尔算子。修复：`retrieve/search.py` 新增 `_fts_safe` 检测，含 `" * - ( ) :` 或大写 `AND OR NOT NEAR` 的 q 路由 LIKE 字面回退；普通 ≥3 字查询仍走 FTS MATCH（不回归）。commit `198cc92`。
+- **F2**（Important）`insert_*` 写失败后连接泄漏：无 try/finally，写异常时 `conn.close()` 不执行且 traceback 帧引用 conn，写锁常驻导致后续写入 `database is locked` 级联（违反设计 §7）。修复：`store/db.py` 统一 `_write` 上下文管理器（成功 commit / 异常 rollback / finally close），异常仍上抛不吞。commit `c693e3a`。
+- **F7**（Minor→硬 DoS）`window_sec=0` 死循环：`window_samples=0` 时 `_audio_loop` 恒真且 buf 不缩减。修复：`app.py` 新增 `_validate_record_cfg`，`run_record` 开头 fail-fast 校验 `audio.sample_rate`/`audio.window_sec` >0，抛 `ValueError`。commit `9e0670d`。
+- 新增测试 5 条：`test_search_fts_quote_no_crash` / `test_search_clip_fts_quote_no_crash` / `test_write_failure_releases_connection_lock` / `test_validate_record_cfg_rejects_zero_window_sec` / `test_validate_record_cfg_rejects_zero_sample_rate`。
+- F3/F4/F5/F6 未动，仍在 M5 backlog。
 
 ## 验收对照
 
