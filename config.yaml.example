@@ -1,0 +1,23 @@
+cameras:
+  - id: 1
+    name: front_door
+    source: 0                 # cv2 设备号 或 rtsp://...
+recording:
+  segment_sec: 60
+  keyframe_sec: 1
+audio:
+  source: mic                 # mic | file
+  device: null
+  sample_rate: 16000
+  window_sec: 6
+whisper:
+  model: small
+  device: cpu
+  language: zh
+ollama:
+  host: http://localhost:11434
+  vlm: qwen2.5vl:7b
+  llm: qwen2.5:7b
+storage:
+  db: data/audiovisual.sqlite
+  media_dir: data/media

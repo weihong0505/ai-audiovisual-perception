@@ -83,7 +83,7 @@
 
 ## 4. 数据模型（SQLite 单库）
 
-> **时间标准（全项目唯一约定）**：所有时间戳用 **UTC epoch 毫秒 INTEGER** 存储，另存 ISO8601 文本便于人读。跨表、跨模块、跨函数一律遵守，不做本地时区换算。
+> **时间标准（全项目唯一约定）**：所有时间戳用 **UTC epoch 毫秒 INTEGER** 存储，另存 ISO8601 文本便于人读。跨表、跨模块、跨函数一律遵守，**存储/比较不做本地时区换算**；仅在**人机边界**做本地墙钟 ↔ UTC epoch 毫秒换算——CLI 解析（`app._parse_range`：本地 `HH:MM:SS` → UTC ms）与问答上下文显示（`qa.ask._fmt_ms`：UTC ms → 本地 `HH:MM:SS`）。
 
 ```sql
 -- 摄像头（多路）
@@ -117,9 +117,7 @@ CREATE TABLE transcriptions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX idx_trans_start ON transcriptions(start_ms);
-CREATE VIRTUAL TABLE transcriptions_fts USING fts5(
-  text, content='transcriptions', content_rowid='id'
-);
+CREATE VIRTUAL TABLE transcriptions_fts USING fts5(text, tokenize='trigram');
 
 -- 关键帧（从视频段抽取的索引帧/缩略图）
 CREATE TABLE frames (
@@ -144,9 +142,7 @@ CREATE TABLE clip_analyses (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX idx_clip_cam_ts ON clip_analyses(camera_id, start_ms);
-CREATE VIRTUAL TABLE clip_analyses_fts USING fts5(
-  summary, content='clip_analyses', content_rowid='id'
-);
+CREATE VIRTUAL TABLE clip_analyses_fts USING fts5(summary, tokenize='trigram');
 
 -- 事件（系统状态 / 汇总 / 问答记录，可选扩展）
 CREATE TABLE events (
@@ -157,17 +153,9 @@ CREATE TABLE events (
 );
 ```
 
-触发器（写入主表时自动同步 FTS，保持索引一致）：
-
-```sql
-CREATE TRIGGER tr_trans_ai AFTER INSERT ON transcriptions BEGIN
-  INSERT INTO transcriptions_fts(rowid, text) VALUES (new.id, new.text);
-END;
-CREATE TRIGGER tr_clip_ai AFTER INSERT ON clip_analyses BEGIN
-  INSERT INTO clip_analyses_fts(rowid, summary) VALUES (new.id, new.summary);
-END;
--- 删除/更新触发器在实现阶段补齐（MVP 只增不删，先留 INSERT 即可）。
-```
+> 注：FTS 索引在 `insert_*` 内手动同步（trigram 支持中文检索；检索层 <3 字查询走 `LIKE` 回退）。
+> 注：`cameras.id` 直接取配置里的 `cameras[].id`（`insert_camera(..., cam_id=...)`），多路录制/检索按此 id 路由一致。
+> 注：关键帧 `frames` 在视频段关闭、拿到真实 `video_segment_id` 后再落库（段内先内存缓冲，`_close_segment` 时 flush），保证 FK 完整。
 
 ## 5. 实时性与性能（8GB 显存调度）
 
@@ -192,7 +180,7 @@ END;
 
 ## 6. 配置与接口
 
-`config.yaml`（示例，所有参数可配置、不硬编码）：
+`config.yaml`（示例，所有参数可配置、不硬编码）；仓库提交 `config.yaml.example`，运行时 `main()` 在 `config.yaml` 缺失时自动回退到 `.example`（全新 checkout 可用）：
 
 ```yaml
 cameras:                      # 多路，每路一个 camera_id
@@ -241,7 +229,7 @@ python app.py summary 10:00-10:30 # （可选）时间范围小结
 
 ## 8. 测试策略
 
-- **单测**：`store/db.py`（schema/触发器/FTS）、时间解析、多摄像头路由。
+- **单测**：`store/db.py`（schema/FTS5 trigram 手动同步）、时间解析、多摄像头路由。
 - **集成**：`FileVideoSource` + `FileAudioSource` 喂带音频的 mp4 夹具，跑「文件→录制分段→转写→落库→检索→问答」全链路；问答用真实 Ollama 或 `MockLLM` 验证上下文拼装。
 - **时序理解验收**：对一段含明显动作的夹具视频，验证 `clip_analyses.summary` 能描述动作序列（AC6）。
 - **不丢帧验收**：录制 1 分钟，校验 `video_segments` 覆盖时长 ≈ 60s（AC5）。
