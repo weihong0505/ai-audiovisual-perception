@@ -17,9 +17,13 @@ venv/
 *.db
 *.sqlite3
 
-# 测试大文件（保留目录占位）
+# 测试夹具
+# 这两个文件合计仅约 110 KB，**必须入库**：否则换机器/新克隆时 4 条测试会失败，
+# 且失败形态是 `assert 0 >= 1`（空列表），完全不提示"文件缺失"，极难排查。
 tests/fixtures/*
 !tests/fixtures/.gitkeep
+!tests/fixtures/clip.mp4
+!tests/fixtures/tone.wav
 
 # 日志与临时
 *.log
